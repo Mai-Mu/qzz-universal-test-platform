@@ -8,6 +8,9 @@ data/
 *.db-wal
 backups/
 
+# Local project test assets
+/local-projects/
+
 # Logs
 *.log
 npm-debug.log*

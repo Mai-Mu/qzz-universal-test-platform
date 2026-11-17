@@ -18,8 +18,6 @@ db.exec(`
     steps TEXT NOT NULL, expected TEXT NOT NULL, status TEXT DEFAULT 'untested',
     notes TEXT DEFAULT '', sort_order INTEGER DEFAULT 0
   );
-  CREATE TABLE folders (project_id INTEGER DEFAULT 1, name TEXT, sort_order INTEGER DEFAULT 0, PRIMARY KEY(project_id, name));
-  CREATE TABLE module_folders (module_id INTEGER PRIMARY KEY, project_id INTEGER DEFAULT 1, folder_name TEXT, sort_order INTEGER DEFAULT 0);
 `);
 db.close();
 

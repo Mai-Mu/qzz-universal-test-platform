@@ -40,6 +40,22 @@ function ensurePlatformSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_import_batches_project_created
       ON import_batches(project_id, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS folders (
+      project_id INTEGER DEFAULT 1,
+      name TEXT,
+      sort_order INTEGER DEFAULT 0,
+      PRIMARY KEY (project_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS module_folders (
+      module_id INTEGER PRIMARY KEY,
+      project_id INTEGER DEFAULT 1,
+      folder_name TEXT,
+      sort_order INTEGER DEFAULT 0,
+      FOREIGN KEY(project_id, folder_name)
+        REFERENCES folders(project_id, name) ON DELETE SET NULL
+    );
   `);
 
   ensureProjectScopedCaseIds(db);

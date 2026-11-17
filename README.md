@@ -26,10 +26,10 @@
 
 ## 快速启动
 
-1. 安装依赖：
+1. 使用 Node.js 24 安装依赖：
 
    ```bash
-   npm install
+   npm ci
    ```
 
 2. 启动服务：
@@ -54,9 +54,9 @@
 
 仓库提供 `Dockerfile`、`docker-compose.yml`、GitHub Actions 自动构建和普通 Nginx 容器反向代理示例，可在 Linux 云服务器上以单实例方式运行。应用只暴露在共享 Docker 网络中，不直接发布 3000 端口；SQLite 数据保存在宿主机 `data/` 目录。
 
-Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组、密码生成、构建、验证、升级和回滚步骤，请参阅 [Docker 部署教程](docs/docker-deployment-ubuntu.md)。
+Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组、密码生成、构建、验证、升级和回滚步骤，请参阅 [Docker 部署教程](docs/deployment/docker-deployment-ubuntu.md)。
 
-服务器无法访问 GitHub 或 GHCR 时，使用 GitHub Actions 生成的完整镜像归档，参阅 [离线部署说明](docs/offline-deployment.md)。
+服务器无法访问 GitHub 或 GHCR 时，使用 GitHub Actions 生成的完整镜像归档，参阅 [离线部署说明](docs/deployment/offline-deployment.md)。
 
 ## 页面地址
 
@@ -91,15 +91,23 @@ Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组�
 │   ├── server.js           # Express 服务和 SQLite API
 │   ├── mcp-server.mjs      # MCP Agent 接口服务
 │   └── lib/                # 数据库迁移与结构化导入逻辑
+├── docs/
+│   ├── deployment/         # Docker 部署与离线安装说明
+│   └── design/             # 功能设计说明
+├── deploy/                 # Nginx 配置示例
+├── .github/workflows/      # Docker 镜像与离线安装包构建
 ├── data/                   # 本地运行数据，不纳入版本控制
 │   ├── testcases.db        # SQLite 数据库
 │   └── backups/            # 自动、手动与 MCP 导入备份
+├── local-projects/         # 本地项目测试资料，不纳入版本控制
 └── package.json            # Node.js 项目配置
 ```
 
 ## 数据与版本控制建议
 
 `data/` 属于本地运行数据，不提交到代码仓库。团队需要迁移或恢复完整数据时，应使用数据库备份文件或独立数据同步流程；HTML 报告适合评审和归档，不用于恢复测试进度，也不包含执行备注与用例正文。
+
+各项目的测试用例、导入包和生成脚本放在 `local-projects/`，Git 和 Docker 构建均会忽略该目录。
 
 系统默认按服务器本地时间每天 `02:00` 自动备份，并保留最近 30 份备份。若服务在 `02:00` 时未运行，当天稍后启动时会检查并补做一次；备份目录可通过 `BACKUP_DIR` 环境变量调整。
 

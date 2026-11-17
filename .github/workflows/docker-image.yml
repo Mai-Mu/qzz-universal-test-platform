@@ -83,7 +83,7 @@ jobs:
           cp docker-compose.yml "$bundle_dir/docker-compose.yml"
           cp .env.example "$bundle_dir/env.example"
           cp deploy/nginx-test-platform.conf.example "$bundle_dir/nginx-test-platform.conf.example"
-          cp docs/offline-deployment.md "$bundle_dir/OFFLINE-INSTALL.md"
+          cp docs/deployment/offline-deployment.md "$bundle_dir/OFFLINE-INSTALL.md"
           printf 'commit=%s\nimage=%s\n' "$GITHUB_SHA" "$IMAGE_NAME" \
             > "$bundle_dir/BUILD-INFO.txt"
 
