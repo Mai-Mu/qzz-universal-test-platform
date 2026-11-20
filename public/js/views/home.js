@@ -11,6 +11,7 @@ export async function loadProjects(ctx) {
       const projects = (await response.json()).map(normalizeProject);
       state.projects = projects;
       renderHome(ctx);
+      renderArchivedProjects(ctx);
       return projects;
     }
   } catch (error) {
@@ -19,6 +20,7 @@ export async function loadProjects(ctx) {
 
   state.projects = [];
   renderHome(ctx);
+  renderArchivedProjects(ctx);
   return [];
 }
 
@@ -33,19 +35,20 @@ export function recordProjectVisit(projectId) {
 function renderHome(ctx) {
   const query = ctx.els.projectSearchInput?.value.trim().toLocaleLowerCase() || "";
   const visits = readProjectVisits();
-  const sortedProjects = [...state.projects].sort((left, right) => {
+  const activeProjects = state.projects.filter(project => !project.archived);
+  activeProjects.sort((left, right) => {
     const visitDifference = (visits[right.id] || 0) - (visits[left.id] || 0);
     if (visitDifference !== 0) return visitDifference;
     return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
   });
-  const filteredProjects = sortedProjects.filter(project => {
+  const filteredProjects = activeProjects.filter(project => {
     if (!query) return true;
     return `${project.name} ${project.description || ""}`.toLocaleLowerCase().includes(query);
-  });
+  }).sort((left, right) => Number(right.pinned) - Number(left.pinned));
 
-  renderSummary(ctx, state.projects);
-  renderContinueAction(ctx, sortedProjects, visits);
-  renderProjects(ctx, filteredProjects, visits, query);
+  renderSummary(ctx, activeProjects);
+  renderContinueAction(ctx, activeProjects, visits);
+  renderProjects(ctx, filteredProjects, visits, activeProjects.length > 0);
 }
 
 function renderSummary(ctx, projects) {
@@ -67,8 +70,8 @@ function renderSummary(ctx, projects) {
   ctx.els.homeStatBlocked.textContent = String(totals.blocked);
 }
 
-function renderContinueAction(ctx, sortedProjects, visits) {
-  const recentProject = sortedProjects.find(project => visits[project.id]);
+function renderContinueAction(ctx, activeProjects, visits) {
+  const recentProject = activeProjects.find(project => visits[project.id]);
   ctx.recentProject = recentProject || null;
   ctx.els.btnContinueProject.hidden = !recentProject;
   if (recentProject) {
@@ -77,7 +80,7 @@ function renderContinueAction(ctx, sortedProjects, visits) {
   }
 }
 
-function renderProjects(ctx, projects, visits, query) {
+function renderProjects(ctx, projects, visits, hasActiveProjects) {
   const { projectsGrid, homeEmptyState } = ctx.els;
   projectsGrid.innerHTML = "";
   ctx.els.homeProjectCount.textContent = String(projects.length);
@@ -88,13 +91,26 @@ function renderProjects(ctx, projects, visits, query) {
   homeEmptyState.hidden = !isEmpty;
   if (!isEmpty) return;
 
-  if (query && state.projects.length > 0) {
+  if (hasActiveProjects) {
     ctx.els.homeEmptyTitle.textContent = "没有匹配的项目";
     ctx.els.homeEmptyDescription.textContent = "换一个项目名称或描述关键词试试。";
+  } else if (state.projects.length > 0) {
+    ctx.els.homeEmptyTitle.textContent = "没有进行中的项目";
+    ctx.els.homeEmptyDescription.textContent = "可以新建项目，或从已归档页面恢复项目。";
   } else {
     ctx.els.homeEmptyTitle.textContent = "还没有测试项目";
     ctx.els.homeEmptyDescription.textContent = "创建第一个项目后，就可以开始组织和执行测试用例。";
   }
+}
+
+function renderArchivedProjects(ctx) {
+  const { archivedProjectsGrid, archivedProjectCount, archiveEmptyState } = ctx.els;
+  const projects = state.projects.filter(project => project.archived);
+  const visits = readProjectVisits();
+  archivedProjectsGrid.replaceChildren();
+  projects.forEach(project => archivedProjectsGrid.appendChild(createProjectCard(ctx, project, visits[project.id])));
+  archivedProjectCount.textContent = String(projects.length);
+  archiveEmptyState.hidden = projects.length > 0;
 }
 
 function createProjectCard(ctx, project, visitedAt) {
@@ -106,11 +122,21 @@ function createProjectCard(ctx, project, visitedAt) {
 
   const toolbar = document.createElement("div");
   toolbar.className = "project-card-toolbar";
-  toolbar.append(
-    createPlaceholderButton("置顶", pinIcon()),
-    createPlaceholderButton("归档", archiveIcon()),
-    createPlaceholderButton("删除", trashIcon(), "danger")
-  );
+  if (project.archived) {
+    const restoreButton = createProjectButton("恢复到首页", restoreIcon(), () => updateProjectFlag(ctx, project.id, "archived", false), "restore");
+    restoreButton.append("恢复");
+    toolbar.appendChild(restoreButton);
+  } else {
+    const pinLabel = project.pinned ? "取消置顶" : "置顶";
+    const pinButton = createProjectButton(pinLabel, pinIcon(), () => updateProjectFlag(ctx, project.id, "pinned", !project.pinned));
+    pinButton.classList.toggle("is-pinned", project.pinned);
+    pinButton.setAttribute("aria-pressed", String(project.pinned));
+    toolbar.append(
+      pinButton,
+      createProjectButton("归档", archiveIcon(), () => updateProjectFlag(ctx, project.id, "archived", true)),
+      createProjectButton("删除", trashIcon(), () => ui.alert("删除功能暂未上线。"), "danger")
+    );
+  }
 
   const openButton = document.createElement("button");
   openButton.className = "project-card-open";
@@ -120,6 +146,7 @@ function createProjectCard(ctx, project, visitedAt) {
 
   const header = document.createElement("div");
   header.className = "project-card-header-row";
+  header.classList.toggle("is-archived", project.archived);
   const icon = document.createElement("span");
   icon.className = `project-card-icon tone-${project.id % 4}`;
   icon.textContent = project.name.trim().charAt(0).toLocaleUpperCase() || "T";
@@ -174,22 +201,48 @@ function createCardStat(label, value, tone = "") {
   return stat;
 }
 
-function createPlaceholderButton(label, iconMarkup, tone = "") {
+function createProjectButton(label, iconMarkup, onClick, tone = "") {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `project-card-action${tone ? ` ${tone}` : ""}`;
   button.setAttribute("aria-label", label);
   button.title = label;
   button.innerHTML = iconMarkup;
-  button.addEventListener("click", event => {
-    event.stopPropagation();
-    ui.alert(`${label}功能暂未上线。`);
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await onClick();
+    } finally {
+      button.disabled = false;
+    }
   });
   return button;
 }
 
+async function updateProjectFlag(ctx, projectId, flag, value) {
+  try {
+    const response = await apiFetch(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [flag]: value })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "请稍后重试。");
+
+    const project = state.projects.find(item => item.id === projectId);
+    if (project) project[flag] = result[flag];
+    renderHome(ctx);
+    renderArchivedProjects(ctx);
+  } catch (error) {
+    console.error("Failed to update project", error);
+    await ui.alert(`更新项目失败。\n${error.message}`);
+  }
+}
+
 export function setupHomeEvents(ctx) {
   const {
+    homeMoreMenu,
+    homeMoreToggle,
     btnCreateProject,
     btnContinueProject,
     projectSearchInput,
@@ -198,6 +251,17 @@ export function setupHomeEvents(ctx) {
     btnCloseProjectDialog,
     btnCancelProject
   } = ctx.els;
+
+  const closeMenuFromOutside = event => {
+    if (homeMoreMenu.open && !homeMoreMenu.contains(event.target)) homeMoreMenu.open = false;
+  };
+  document.addEventListener("click", closeMenuFromOutside);
+  document.addEventListener("focusin", closeMenuFromOutside);
+  homeMoreMenu.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || !homeMoreMenu.open) return;
+    homeMoreMenu.open = false;
+    homeMoreToggle.focus();
+  });
 
   btnCreateProject?.addEventListener("click", () => openCreateDialog(ctx));
   btnCloseProjectDialog?.addEventListener("click", () => projectCreateDialog.close());
@@ -271,6 +335,8 @@ function normalizeProject(project) {
   return {
     ...project,
     id: Number(project.id),
+    pinned: project.pinned === true,
+    archived: project.archived === true,
     caseCount: Number(project.caseCount || 0),
     passedCount: Number(project.passedCount || 0),
     failedCount: Number(project.failedCount || 0),
@@ -315,6 +381,10 @@ function pinIcon() {
 
 function archiveIcon() {
   return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M5 6v14h14V6"></path><path d="M8 3h8l2 3H6Z"></path><path d="M9 10h6"></path></svg>';
+}
+
+function restoreIcon() {
+  return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h11a6 6 0 0 1 0 12h-3"></path><path d="m8 3-5 5 5 5"></path></svg>';
 }
 
 function trashIcon() {

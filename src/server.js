@@ -338,6 +338,10 @@ seedDatabase();
 // --- API Endpoints ---
 
 // --- Projects Endpoints ---
+function serializeProjectFlags({ pinned, archived, ...project }) {
+  return { ...project, pinned: Boolean(pinned), archived: Boolean(archived) };
+}
+
 app.get('/api/projects', (req, res) => {
   try {
     const rows = db.prepare(`
@@ -346,20 +350,54 @@ app.get('/api/projects', (req, res) => {
         p.name,
         p.description,
         p.created_at,
+        pf.pinned,
+        pf.archived,
         COUNT(tc.id) AS caseCount,
         COALESCE(SUM(CASE WHEN tc.status = 'passed' THEN 1 ELSE 0 END), 0) AS passedCount,
         COALESCE(SUM(CASE WHEN tc.status = 'failed' THEN 1 ELSE 0 END), 0) AS failedCount,
         COALESCE(SUM(CASE WHEN tc.status = 'blocked' THEN 1 ELSE 0 END), 0) AS blockedCount,
         COALESCE(SUM(CASE WHEN tc.status = 'untested' THEN 1 ELSE 0 END), 0) AS untestedCount
       FROM projects p
+      LEFT JOIN project_flags pf ON pf.project_id = p.id
       LEFT JOIN test_cases tc ON tc.project_id = p.id
       GROUP BY p.id
       ORDER BY p.id ASC
     `).all();
-    res.json(rows);
+    res.json(rows.map(serializeProjectFlags));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to retrieve projects' });
+  }
+});
+
+app.patch('/api/projects/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const { pinned, archived } = req.body || {};
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'A valid project id is required' });
+  }
+  if ((pinned === undefined && archived === undefined)
+    || (pinned !== undefined && typeof pinned !== 'boolean')
+    || (archived !== undefined && typeof archived !== 'boolean')) {
+    return res.status(400).json({ error: 'Provide pinned or archived as a boolean' });
+  }
+
+  const pinnedValue = pinned === undefined ? null : Number(pinned);
+  const archivedValue = archived === undefined ? null : Number(archived);
+  try {
+    const project = db.prepare(`
+      INSERT INTO project_flags (project_id, pinned, archived)
+      SELECT id, COALESCE(?, 0), COALESCE(?, 0) FROM projects WHERE id = ?
+      ON CONFLICT (project_id) DO UPDATE SET
+        pinned = COALESCE(?, pinned),
+        archived = COALESCE(?, archived)
+      RETURNING project_id AS id, pinned, archived
+    `).get(pinnedValue, archivedValue, id, pinnedValue, archivedValue);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    res.json({ success: true, ...serializeProjectFlags(project) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update project flags' });
   }
 });
 

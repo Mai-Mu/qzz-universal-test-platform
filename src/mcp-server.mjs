@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { DatabaseSync } from 'node:sqlite';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -18,10 +19,25 @@ const {
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDir, '..');
+const testCaseSkillPath = path.join(projectRoot, '.agents', 'skills', 'qzz-test-case-writer', 'SKILL.md');
 const dbPath = path.resolve(process.env.TEST_PLATFORM_DB || path.join(projectRoot, 'data', 'testcases.db'));
 const backupDir = path.resolve(process.env.TEST_PLATFORM_BACKUP_DIR || path.join(projectRoot, 'data', 'backups'));
+await mkdir(path.dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 ensurePlatformSchema(db);
+
+const projectDocumentsGuidance = '将项目范围、共用准备说明、环境、通用测试数据、执行注意事项和验收口径集中写在项目说明。';
+const preconditionGuidance = '仅写执行当前用例必需的初始状态和专用数据，保留影响结果的条件和数值。共用准备说明写入 documents，需要时引用其中相关段落。';
+const stepTextGuidance = '填写正文，省略列表序号和项目符号，保留有业务含义的编号和数值。';
+const importInstructions = [
+  '生成测试用例或规范化外部用例时，先调用 get_test_case_guidelines 读取项目配套技能，按规范生成或整理并复核。',
+  '默认交付用例。目标明确时可调用 validate_test_package 只读预检。用户明确要求导入时，确认目标、预检通过后再调用 import_test_package。',
+  '按项目、目录、模块和用例组织。依据原始资料保留业务条件、数据和验收口径。',
+  `项目说明 documents。${projectDocumentsGuidance}`,
+  `用例前置条件 precondition。${preconditionGuidance}`,
+  `每个 steps 元素只包含这一步的操作 action 和对应预期 expected。步骤顺序由数组表达。${stepTextGuidance}`,
+  '用 list_test_projects 确认目标项目。预检返回 errors 时，修正后重新预检。'
+].join('\n');
 
 const projectSelectorSchema = {
   type: 'object',
@@ -48,7 +64,7 @@ const packageSchema = {
     },
     documents: {
       type: 'array',
-      description: '测试资料中的范围、介绍、说明、注意事项和验收口径等非用例内容。',
+      description: projectDocumentsGuidance,
       items: {
         type: 'object',
         required: ['title', 'content'],
@@ -89,17 +105,18 @@ const packageSchema = {
                         description: '项目内稳定且唯一的用例编号，例如 TC-P0-001。'
                       },
                       title: { type: 'string', minLength: 1 },
-                      precondition: { type: 'string' },
+                      precondition: { type: 'string', description: preconditionGuidance },
                       steps: {
                         type: 'array',
                         minItems: 1,
+                        description: '按执行顺序逐步填写，每一步包含一组操作和对应预期。页面根据数组顺序展示步骤。',
                         items: {
                           type: 'object',
                           required: ['action', 'expected'],
                           additionalProperties: false,
                           properties: {
-                            action: { type: 'string', minLength: 1 },
-                            expected: { type: 'string', minLength: 1 }
+                            action: { type: 'string', minLength: 1, description: `本步操作。${stepTextGuidance}` },
+                            expected: { type: 'string', minLength: 1, description: `本步预期结果。${stepTextGuidance}` }
                           }
                         }
                       }
@@ -131,6 +148,12 @@ const importInputSchema = {
 };
 
 const tools = [
+  {
+    name: 'get_test_case_guidelines',
+    description: '读取项目自带的测试用例 Skill。适用于根据需求生成用例、将外部用例规范化，以及复核用例的可执行性与平台适配。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true }
+  },
   {
     name: 'list_test_projects',
     description: '列出测试平台现有项目及用例、模块数量。新建或追加前应先调用，避免选错项目。',
@@ -165,7 +188,7 @@ const tools = [
 
 const server = new Server(
   { name: 'universal-test-platform-mcp', version: '2.0.0' },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {} }, instructions: importInstructions }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
@@ -173,6 +196,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(CallToolRequestSchema, async request => {
   const { name, arguments: args = {} } = request.params;
   try {
+    if (name === 'get_test_case_guidelines') {
+      const text = await readFile(testCaseSkillPath, 'utf8');
+      return { content: [{ type: 'text', text }] };
+    }
+
     if (name === 'list_test_projects') return jsonResult({ projects: listProjects(db) });
 
     if (name === 'get_test_project') {

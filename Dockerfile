@@ -12,6 +12,7 @@ RUN npm ci --omit=dev \
 
 COPY --chown=node:node public ./public
 COPY --chown=node:node src ./src
+COPY --chown=node:node .agents/skills/qzz-test-case-writer ./.agents/skills/qzz-test-case-writer
 
 RUN mkdir -p /app/data \
     && chown -R node:node /app/data

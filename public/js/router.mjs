@@ -10,6 +10,8 @@ export function parseAppRoute(pathname = "/", search = "") {
   if (normalizedPath === "/") {
     return { page: "home" };
   }
+  if (normalizedPath === "/archived") return { page: "archive" };
+  if (normalizedPath === "/backups") return { page: "backups" };
 
   const backupMatch = normalizedPath.match(/^\/projects\/(\d+)\/backups$/);
   if (backupMatch) {
@@ -68,6 +70,8 @@ export function parseAppRoute(pathname = "/", search = "") {
 
 export function buildAppUrl(route) {
   if (!route || route.page === "home") return "/";
+  if (route.page === "archive") return "/archived";
+  if (route.page === "backups") return "/backups";
 
   const projectId = parsePositiveInteger(route.projectId);
   if (route.page !== "project" || projectId === null) return "/";

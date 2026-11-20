@@ -6,7 +6,7 @@
 
 ## 核心特性
 
-- **多项目空间隔离**：支持创建多个测试项目，不同项目的数据、模块、文件夹和进度相互独立。
+- **多项目空间隔离**：不同项目的数据、模块、文件夹和进度相互独立。支持置顶、归档和恢复项目，首页统筹只统计未归档项目。
 - **模块与文件夹管理**：左侧提供可折叠、可拖拽排序的模块目录树，方便按功能域、版本、团队或测试轮次组织用例。
 - **测试进度总览**：Dashboard 自动统计总用例数、已通过、未通过、已阻塞、未测试，并展示完成度和通过率。
 - **项目级状态筛选**：可从总览统计卡进入跨文件夹用例结果页，并按文件夹、模块、用例保留完整层级。
@@ -14,7 +14,7 @@
 - **单文件 HTML 报告**：可导出当前项目的离线数据看板，包含核心指标、状态环形图、文件夹完成度、模块风险条形图和项目结构树。
 - **本地数据库存储**：使用 Node.js 原生 `node:sqlite` 存储数据，无需额外部署数据库服务。
 - **自动备份与恢复**：支持手动备份、定时备份、备份下载、删除和数据库恢复。
-- **Agent 扩展接口**：预留 MCP 服务，便于后续让 AI Agent 读取上下文或批量写入测试用例。
+- **Agent 扩展接口**：MCP 支持查询项目、读取配套技能规范，以及预检和批量导入测试用例。
 
 ## 技术栈
 
@@ -61,10 +61,12 @@ Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组�
 ## 页面地址
 
 - `/`：测试空间大厅。
+- `/archived`：查看和恢复已归档项目。
+- `/backups`：全平台数据库备份管理。
 - `/projects/:projectId`：项目工作区，默认显示测试概览。
 - `/projects/:projectId?module=:moduleId`：直接打开指定测试模块。
 - `/projects/:projectId?view=cases&status=failed`：打开项目级用例列表并恢复状态筛选；`status` 支持 `passed`、`failed`、`blocked`、`untested`。
-- `/projects/:projectId/backups`：打开当前项目的备份管理。
+- `/projects/:projectId/backups`：从项目工作区打开全平台数据库备份管理。
 
 项目内切换会同步更新浏览器历史记录，因此可以刷新恢复当前页面，也可以使用浏览器的前进、后退或直接分享链接。
 
@@ -87,6 +89,7 @@ Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组�
 │       ├── reportBuilder.mjs # 单文件 HTML 报告生成器
 │       └── views/          # 页面/区域模块
 ├── scripts/                # 验证脚本
+├── .agents/skills/         # 配套 Codex Skill，供 MCP 读取
 ├── src/                    # 后端与 Agent 源码
 │   ├── server.js           # Express 服务和 SQLite API
 │   ├── mcp-server.mjs      # MCP Agent 接口服务
@@ -115,8 +118,19 @@ Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组�
 
 项目通过 `src/mcp-server.mjs` 让 Codex 等支持 MCP 的 Agent 直接向平台提交结构化测试资产，不再依赖人工整理 Markdown 和二次导入。MCP 与 Web 服务共用 SQLite 数据库，支持项目说明、目录、模块、用例和导入审计。
 
+### 配套测试用例技能
+
+[qzz-test-case-writer](.agents/skills/qzz-test-case-writer/SKILL.md) 支持从需求生成可执行的用例，也支持将外部八大要素用例转换为平台格式，保留原编号和业务含义。
+
+- 在仓库内使用 Codex 时，可调用 `$qzz-test-case-writer`。
+- 单独使用时，将完整的 `.agents/skills/qzz-test-case-writer/` 目录放入 Codex 的用户技能目录，例如 `~/.agents/skills/`。
+- 在其他工作目录里，连接 `qzz_test_hub` 后，Codex 可通过 `get_test_case_guidelines` 读取项目随附的同一份规范。
+
+克隆后使用 Node.js 24 安装依赖并在 Codex 注册 MCP，例如 `codex mcp add qzz_test_hub -- node "<仓库绝对路径>/src/mcp-server.mjs"`。可直接说「把这份用例按平台格式整理，保留原编号」来生成用例。明确说「生成并导入」或「规范化并导入」时，工作流会先复核和预检，再写入指定项目。
+
 ### MCP 工具
 
+- `get_test_case_guidelines`：读取仓库自带的测试用例生成、规范化及导入前复核规则。
 - `list_test_projects`：列出项目及用例、模块数量。
 - `get_test_project`：读取项目说明、目录、模块、用例和当前执行状态。
 - `validate_test_package`：只做结构、重复编号和目标项目预检，不写数据库。
