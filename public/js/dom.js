@@ -1,4 +1,6 @@
 export function getElements() {
+  const viewBackup = document.getElementById("backup-view");
+
   return {
     foldersContainer: document.getElementById("folders-container"),
     sidebar: document.getElementById("workspace-sidebar"),
@@ -12,7 +14,11 @@ export function getElements() {
     viewProjectDocs: document.getElementById("view-project-docs"),
     viewProjectCases: document.getElementById("view-project-cases"),
     viewModuleCases: document.getElementById("view-module-cases"),
-    viewBackup: document.getElementById("backup-view"),
+    viewBackup,
+    workspaceBackupBody: viewBackup.parentElement,
+    globalBackupView: document.getElementById("global-backup-view"),
+    globalBackupBody: document.getElementById("global-backup-body"),
+    backupHomeLink: document.getElementById("backup-home-link"),
     btnBackupMgmt: document.getElementById("btn-backup-mgmt"),
     btnCreateBackup: document.getElementById("btn-create-backup"),
     backupListTbody: document.getElementById("backup-list-tbody"),
@@ -42,6 +48,15 @@ export function getElements() {
     projectDocsList: document.getElementById("project-docs-list"),
     projectDocsEmpty: document.getElementById("project-docs-empty"),
     homeView: document.getElementById("home-view"),
+    homeMoreMenu: document.getElementById("home-more-menu"),
+    homeMoreToggle: document.getElementById("home-more-toggle"),
+    homeArchiveLink: document.getElementById("home-archive-link"),
+    homeBackupsLink: document.getElementById("home-backups-link"),
+    archiveView: document.getElementById("archive-view"),
+    archiveHomeLink: document.getElementById("archive-home-link"),
+    archivedProjectsGrid: document.getElementById("archived-projects-grid"),
+    archivedProjectCount: document.getElementById("archived-project-count"),
+    archiveEmptyState: document.getElementById("archive-empty-state"),
     workspaceView: document.getElementById("workspace-view"),
     projectsGrid: document.getElementById("projects-grid"),
     btnCreateProject: document.getElementById("btn-create-project"),

@@ -8,6 +8,13 @@ function ensurePlatformSchema(db) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS project_flags (
+      project_id INTEGER PRIMARY KEY,
+      pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0, 1)),
+      archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS project_documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL,

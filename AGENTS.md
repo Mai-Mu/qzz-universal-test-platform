@@ -4,6 +4,7 @@
 
 - `src/server.js` serves the Express API and static frontend. `src/mcp-server.mjs` exposes MCP tools over stdio. Shared SQLite schema, migrations, and package import logic live in `src/lib/`.
 - `public/` holds the HTML, CSS, and browser ES modules. Put feature-specific UI code in `public/js/views/` and use `public/js/api.js` for API requests.
+- `.agents/skills/` holds the bundled Codex skill. The MCP server reads the same `SKILL.md` to provide import guidance.
 - `scripts/` holds the automated smoke tests. Deployment guides live in `docs/deployment/`, design notes live in `docs/design/`, and `deploy/` contains the Nginx configuration example.
 - Keep project-specific test assets in the ignored `local-projects/` directory.
 

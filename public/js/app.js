@@ -30,7 +30,7 @@ export async function startApp() {
   ctx.switchView = (moduleId, options) => switchView(ctx, moduleId, options);
   ctx.openProjectCases = (filter, options) => openProjectCases(ctx, filter, options);
   ctx.openProject = (projectId, projectName, options) => openProject(ctx, projectId, projectName, options);
-  ctx.goHome = options => showHome(ctx, options);
+  ctx.goHome = options => showTopLevelPage(ctx, "home", options);
 
   setupEventListeners(ctx);
   window.addEventListener("popstate", () => {
@@ -80,7 +80,7 @@ async function loadData(ctx) {
 async function openProject(ctx, projectId, projectName, options = {}) {
   const numericProjectId = Number(projectId);
   if (!Number.isSafeInteger(numericProjectId) || numericProjectId <= 0) {
-    await showHome(ctx, { historyMode: "replace" });
+    await ctx.goHome({ historyMode: "replace" });
     return;
   }
 
@@ -100,8 +100,7 @@ async function openProject(ctx, projectId, projectName, options = {}) {
   state.currentFilter = "all";
   state.currentProjectFilter = "all";
   state.projectCollapsedFolders.clear();
-  ctx.els.homeView.style.display = "none";
-  ctx.els.workspaceView.style.display = "flex";
+  showAppPage(ctx, "project");
   closeMobileSidebar(ctx);
   writeBrowserRoute(route, options.historyMode || "push");
 
@@ -148,12 +147,11 @@ function switchView(ctx, moduleId, options = {}) {
   }
 
   if (state.currentView === "backup") {
-    ctx.els.viewBackup.style.display = "block";
     ctx.els.pageTitle.textContent = "备份管理";
     if (ctx.els.btnEditProject) ctx.els.btnEditProject.style.display = "none";
     if (ctx.els.btnResetModule) ctx.els.btnResetModule.style.display = "none";
     setDocumentTitle(`${state.currentProjectName} · 备份管理`);
-    loadBackups(ctx);
+    showBackupPanel(ctx, ctx.els.workspaceBackupBody);
     return;
   }
 
@@ -218,39 +216,55 @@ function openProjectCases(ctx, filter, options = {}) {
   renderProjectCases(ctx);
 }
 
-async function showHome(ctx, options = {}) {
+function showAppPage(ctx, page) {
+  ctx.els.homeMoreMenu.open = false;
+  ctx.els.homeView.style.display = page === "home" ? "block" : "none";
+  ctx.els.archiveView.style.display = page === "archive" ? "block" : "none";
+  ctx.els.globalBackupView.style.display = page === "backups" ? "block" : "none";
+  ctx.els.workspaceView.style.display = page === "project" ? "flex" : "none";
+}
+
+function showBackupPanel(ctx, container) {
+  container.appendChild(ctx.els.viewBackup);
+  ctx.els.viewBackup.style.display = "block";
+  return loadBackups(ctx);
+}
+
+async function showTopLevelPage(ctx, page, options = {}) {
   closeMobileSidebar(ctx);
-  state.currentView = "home";
+  state.currentView = page;
   state.currentProjectId = null;
   state.currentModuleId = null;
   state.currentProjectFilter = "all";
-  ctx.els.workspaceView.style.display = "none";
-  ctx.els.homeView.style.display = "block";
-  writeBrowserRoute({ page: "home" }, options.historyMode || "push");
-  setDocumentTitle();
+  showAppPage(ctx, page);
+  writeBrowserRoute({ page }, options.historyMode || "push");
 
+  if (page === "backups") {
+    setDocumentTitle("备份管理");
+    await showBackupPanel(ctx, ctx.els.globalBackupBody);
+    return;
+  }
+
+  setDocumentTitle(page === "archive" ? "已归档项目" : null);
   if (options.reloadProjects !== false) {
     await ctx.loadProjects();
   }
 }
 
 async function applyCurrentRoute(ctx) {
-  const route = parseAppRoute(window.location.pathname, window.location.search);
-
-  if (route.page === "home") {
-    await showHome(ctx, { historyMode: "replace" });
-    return;
-  }
-
-  if (route.page === "not-found") {
-    await showHome(ctx, { historyMode: "replace" });
+  const { pathname, search } = window.location;
+  const route = parseAppRoute(pathname, search);
+  if (route.page !== "project") {
+    const page = route.page === "not-found" ? "home" : route.page;
+    await showTopLevelPage(ctx, page, { historyMode: "replace" });
     return;
   }
 
   const projects = state.projects.length > 0 ? state.projects : await ctx.loadProjects();
+  if (window.location.pathname !== pathname || window.location.search !== search) return;
   const project = projects.find(item => Number(item.id) === route.projectId);
   if (!project) {
-    await showHome(ctx, { historyMode: "replace", reloadProjects: false });
+    await ctx.goHome({ historyMode: "replace", reloadProjects: false });
     return;
   }
 
@@ -265,8 +279,7 @@ async function applyCurrentRoute(ctx) {
   }
 
   state.currentProjectName = project.name;
-  ctx.els.homeView.style.display = "none";
-  ctx.els.workspaceView.style.display = "flex";
+  showAppPage(ctx, "project");
   applyProjectView(ctx, route, { historyMode: "replace" });
 }
 
@@ -316,6 +329,14 @@ function setDocumentTitle(label) {
   document.title = label ? `${label} - ${APP_TITLE}` : APP_TITLE;
 }
 
+function bindTopLevelLink(ctx, link, page) {
+  link.addEventListener("click", event => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    showTopLevelPage(ctx, page);
+  });
+}
+
 function setupEventListeners(ctx) {
   ctx.els.navDashboard.addEventListener("click", () => {
     ctx.switchView(null);
@@ -323,10 +344,11 @@ function setupEventListeners(ctx) {
   ctx.els.navProjectDocs.addEventListener("click", () => {
     ctx.switchView("project-docs");
   });
-  ctx.els.brandHomeLink.addEventListener("click", event => {
-    event.preventDefault();
-    ctx.goHome();
-  });
+  bindTopLevelLink(ctx, ctx.els.brandHomeLink, "home");
+  bindTopLevelLink(ctx, ctx.els.archiveHomeLink, "home");
+  bindTopLevelLink(ctx, ctx.els.backupHomeLink, "home");
+  bindTopLevelLink(ctx, ctx.els.homeArchiveLink, "archive");
+  bindTopLevelLink(ctx, ctx.els.homeBackupsLink, "backups");
 
   setupBackupEvents(ctx);
   setupCaseEvents(ctx);

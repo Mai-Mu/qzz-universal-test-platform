@@ -72,6 +72,10 @@ for (const file of filesToCheck) {
 const routerUrl = pathToFileURL(path.resolve('public/js/router.mjs')).href;
 const { buildAppUrl, parseAppRoute } = await import(routerUrl);
 assert.deepEqual(parseAppRoute('/', ''), { page: 'home' });
+assert.deepEqual(parseAppRoute('/archived', ''), { page: 'archive' });
+assert.deepEqual(parseAppRoute('/backups', ''), { page: 'backups' });
+assert.equal(buildAppUrl({ page: 'archive' }), '/archived');
+assert.equal(buildAppUrl({ page: 'backups' }), '/backups');
 assert.deepEqual(parseAppRoute('/projects/7', '?module=12'), {
   page: 'project',
   projectId: 7,
@@ -134,6 +138,19 @@ if (/<(?:script|link|img)[^>]+(?:src|href)=["']https?:/i.test(sampleReport)) {
 const port = String(31000 + Math.floor(Math.random() * 1000));
 const smokeDataDir = await mkdtemp(path.join(tmpdir(), 'test-platform-web-'));
 const smokeBackupDir = path.join(smokeDataDir, 'backups');
+const legacyProjectName = 'Smoke test legacy project';
+const legacyDb = new DatabaseSync(path.join(smokeDataDir, 'testcases.db'));
+legacyDb.exec(`
+  CREATE TABLE projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+legacyDb.prepare('INSERT INTO projects (id, name) VALUES (1, ?)').run(legacyProjectName);
+legacyDb.close();
+
 const server = spawn(process.execPath, ['src/server.js'], {
   cwd: process.cwd(),
   env: {
@@ -182,6 +199,49 @@ try {
   if (!projectSummaryFields.every(field => Number.isFinite(projects[0][field]))) {
     throw new Error('Expected /api/projects to include numeric cross-project status summaries');
   }
+  const existingProject = projects.find(project => project.id === 1);
+  assert.equal(existingProject?.name, legacyProjectName);
+  assert.equal(existingProject.pinned, false);
+  assert.equal(existingProject.archived, false);
+
+  const patchProject = (id, changes) => fetch(`${baseUrl}/api/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes)
+  });
+
+  const pinResponse = await patchProject(1, { pinned: true });
+  assert.equal(pinResponse.status, 200);
+  assert.deepEqual(await pinResponse.json(), {
+    success: true, id: 1, pinned: true, archived: false
+  });
+
+  const archiveResponse = await patchProject(1, { archived: true });
+  assert.equal(archiveResponse.status, 200);
+  assert.deepEqual(await archiveResponse.json(), {
+    success: true, id: 1, pinned: true, archived: true
+  });
+  assert.equal((await patchProject(1, { pinned: false, archived: 'false' })).status, 400);
+  assert.equal((await patchProject(999, { archived: true })).status, 404);
+  const archivedProjects = await waitForJson(`${baseUrl}/api/projects`);
+  assert.deepEqual(archivedProjects.find(project => project.id === 1), {
+    ...existingProject, pinned: true, archived: true
+  });
+  assert.ok(cases.length > 0);
+  assert.deepEqual(await waitForJson(`${baseUrl}/api/testcases?projectId=1`), cases);
+
+  const restoreProjectResponse = await patchProject(1, { archived: false });
+  assert.equal(restoreProjectResponse.status, 200);
+  assert.deepEqual(await restoreProjectResponse.json(), {
+    success: true, id: 1, pinned: true, archived: false
+  });
+  const unpinResponse = await patchProject(1, { pinned: false });
+  assert.equal(unpinResponse.status, 200);
+  assert.deepEqual(await unpinResponse.json(), {
+    success: true, id: 1, pinned: false, archived: false
+  });
+  assert.deepEqual(await waitForJson(`${baseUrl}/api/projects`), projects);
+
   if (!Array.isArray(cases)) {
     throw new Error('Expected an array from /api/testcases');
   }
@@ -201,6 +261,16 @@ try {
   if (!backupPage.ok || !backupPageHtml.includes('id="backup-view"')) {
     throw new Error('Expected /projects/1/backups to return the frontend application');
   }
+  const homeMenu = projectPageHtml.match(/<details[^>]*id="home-more-menu"[^>]*>([\s\S]*?)<\/details>/);
+  assert.ok(homeMenu, 'Expected the home actions to have a disclosure menu');
+  assert.match(homeMenu[1], /href="\/archived"/);
+  assert.match(homeMenu[1], /href="\/backups"/);
+  const archivedPage = await fetch(`${baseUrl}/archived`);
+  assert.equal(archivedPage.status, 200);
+  assert.match(await archivedPage.text(), /id="archive-view"/);
+  const globalBackupPage = await fetch(`${baseUrl}/backups`);
+  assert.equal(globalBackupPage.status, 200);
+  assert.match(await globalBackupPage.text(), /id="global-backup-view"/);
   if (!backupResponse.ok || !backupResult.success) {
     throw new Error('Expected manual backup creation to succeed');
   }
