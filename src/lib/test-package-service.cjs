@@ -198,8 +198,8 @@ function importPackage(db, input, options = {}) {
         upsertModule.run(moduleId, project.id, folder.name, module.sortOrder);
 
         for (const testCase of module.cases) {
-          const steps = testCase.steps.map((step, index) => `${index + 1}. ${step.action}`);
-          const expected = testCase.steps.map((step, index) => `${index + 1}. ${step.expected}`);
+          const steps = testCase.steps.map(step => step.action);
+          const expected = testCase.steps.map(step => step.expected);
           const exists = db.prepare('SELECT 1 FROM test_cases WHERE project_id = ? AND id = ?')
             .get(project.id, testCase.id);
           if (exists) {
@@ -313,8 +313,9 @@ function normalizePackage(pkg, errors, warnings) {
         if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/.test(id)) errors.push(`${location}.id 格式无效：${id}`);
         if (!title) errors.push(`${location}.title 不能为空`);
         const steps = arrayValue(testCase?.steps).map((step, stepIndex) => {
-          const action = cleanText(step?.action);
-          const expected = cleanText(step?.expected);
+          const stepNumber = stepIndex + 1;
+          const action = cleanStepText(step?.action, stepNumber);
+          const expected = cleanStepText(step?.expected, stepNumber);
           if (!action) errors.push(`${location}.steps[${stepIndex}].action 不能为空`);
           if (!expected) errors.push(`${location}.steps[${stepIndex}].expected 不能为空`);
           return { action, expected };
@@ -376,9 +377,15 @@ function pairSteps(stepsJson, expectedJson) {
   const steps = JSON.parse(stepsJson || '[]');
   const expected = JSON.parse(expectedJson || '[]');
   return steps.map((action, index) => ({
-    action: String(action).replace(/^\d+\.\s*/, ''),
-    expected: String(expected[index] || '').replace(/^\d+\.\s*/, '')
+    action: stripLegacyStepNumber(action, index + 1),
+    expected: stripLegacyStepNumber(expected[index] || '', index + 1)
   }));
+}
+
+function stripLegacyStepNumber(value, stepNumber) {
+  const text = String(value);
+  const prefix = `${stepNumber}. `;
+  return text.startsWith(prefix) ? text.slice(prefix.length) : text;
 }
 
 function createDatabaseBackup(db, dbPath, backupDir) {
@@ -409,6 +416,12 @@ function stableStringify(value) {
 
 function arrayValue(value) { return Array.isArray(value) ? value : []; }
 function cleanText(value) { return typeof value === 'string' ? value.trim() : ''; }
+function cleanStepText(value, stepNumber) {
+  // A digit or Latin identifier immediately after a dot can be part of the step text.
+  const listMarker = new RegExp(`^${stepNumber}(?:[.．](?=\\s|\\p{Script=Han}|$)|、)`, 'u');
+  return cleanText(value).replace(listMarker, '').trimStart();
+}
+
 function positiveInteger(value) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 ? number : null;

@@ -115,8 +115,19 @@ Ubuntu 24.04 的完整部署、现有数据库迁移、DNS、阿里云安全组�
 
 项目通过 `src/mcp-server.mjs` 让 Codex 等支持 MCP 的 Agent 直接向平台提交结构化测试资产，不再依赖人工整理 Markdown 和二次导入。MCP 与 Web 服务共用 SQLite 数据库，支持项目说明、目录、模块、用例和导入审计。
 
+### 配套测试用例技能
+
+[qzz-test-case-writer](.agents/skills/qzz-test-case-writer/SKILL.md) 支持从需求生成可执行的用例，也支持将外部八大要素用例转换为平台格式，保留原编号和业务含义。
+
+- 在仓库内使用 Codex 时，可调用 `$qzz-test-case-writer`。
+- 单独使用时，将完整的 `.agents/skills/qzz-test-case-writer/` 目录放入 Codex 的用户技能目录，例如 `~/.agents/skills/`。
+- 在其他工作目录里，连接 `qzz_test_hub` 后，Codex 可通过 `get_test_case_guidelines` 读取项目随附的同一份规范。
+
+克隆后使用 Node.js 24 安装依赖并在 Codex 注册 MCP，例如 `codex mcp add qzz_test_hub -- node "<仓库绝对路径>/src/mcp-server.mjs"`。可直接说「把这份用例按平台格式整理，保留原编号」来生成用例。明确说「生成并导入」或「规范化并导入」时，工作流会先复核和预检，再写入指定项目。
+
 ### MCP 工具
 
+- `get_test_case_guidelines`：读取仓库自带的测试用例生成、规范化及导入前复核规则。
 - `list_test_projects`：列出项目及用例、模块数量。
 - `get_test_project`：读取项目说明、目录、模块、用例和当前执行状态。
 - `validate_test_package`：只做结构、重复编号和目标项目预检，不写数据库。
